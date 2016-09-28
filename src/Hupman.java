@@ -13,8 +13,7 @@ import java.util.concurrent.TimeUnit;
 
 class Node {
 	private ArrayList<Node> adjList = new ArrayList<>();
-	private int xGrid;
-	private int yGrid;
+	private Point nodePos;
 	private boolean visited = false;
 	private Node parent = null;
 
@@ -22,9 +21,8 @@ class Node {
 	private int gCost = 0;
 	private int hCost = 0;
 
-	Node(int x, int y) {
-		xGrid = x;
-		yGrid = y;
+	Node(Point pos) {
+		nodePos = pos;
 	}
 
 	void addNode(Node node) {
@@ -51,12 +49,8 @@ class Node {
 		return adjList;
 	}
 
-	int getX() {
-		return xGrid;
-	}
-
-	int getY() {
-		return yGrid;
+	Point getPos() {
+		return nodePos;
 	}
 
 	//A* functions
@@ -85,11 +79,11 @@ class State {
 
 	State() {}
 
-	State(Point locH, ArrayList<Point> locAG, ArrayList<Point> locAP, int turn) {
-		locHupman = locH;
-		locAllGhosts = locAG;
-		locAllPellets = locAP;
-		turnNum = turn;
+	State(State oldState) {
+		locHupman = new Point(oldState.getHupmanLocation());
+		locAllGhosts = new ArrayList<>(oldState.getGhostLocations());
+		locAllPellets = new ArrayList<>(oldState.getPelletLocations());
+		turnNum = oldState.getTurn();
 	}
 
 	public void setHupmanLocation(Point newPos) {
@@ -185,7 +179,7 @@ public class Hupman extends JPanel{
 		resetPelletNodes();
 		resetVisitedNodes();
 
-		takeTurn(currentState);
+		takeTurn();
 	}
 
 	public void paintComponent(Graphics g) {
@@ -294,7 +288,7 @@ public class Hupman extends JPanel{
 	}
 
 	private void createGraph() {
-		addNode(new Node(0, 0), 0, 0);
+		addNode(new Node(new Point(0, 0)), 0, 0);
 	}
 
 	private void addNode(Node thisNode, int currX, int currY) {
@@ -307,7 +301,7 @@ public class Hupman extends JPanel{
 			String sKey = (currX-1) + "-" + currY;
 			Node tempNode = mapNodes.get(sKey);
 			if (tempNode == null) {
-				tempNode = new Node(currX - 1, currY);
+				tempNode = new Node(new Point(currX - 1, currY));
 				addNode(tempNode, currX - 1, currY);
 			}
 
@@ -318,7 +312,7 @@ public class Hupman extends JPanel{
 			String sKey = (currX+1) + "-" + currY;
 			Node tempNode = mapNodes.get(sKey);
 			if (tempNode == null) {
-				tempNode = new Node(currX + 1, currY);
+				tempNode = new Node(new Point(currX + 1, currY));
 				addNode(tempNode, currX + 1, currY);
 			}
 
@@ -329,7 +323,7 @@ public class Hupman extends JPanel{
 			String sKey = currX + "-" + (currY-1);
 			Node tempNode = mapNodes.get(sKey);
 			if (tempNode == null) {
-				tempNode = new Node(currX, currY - 1);
+				tempNode = new Node(new Point(currX, currY - 1));
 				addNode(tempNode, currX, currY - 1);
 			}
 
@@ -340,7 +334,7 @@ public class Hupman extends JPanel{
 			String sKey = currX + "-" + (currY+1);
 			Node tempNode = mapNodes.get(sKey);
 			if (tempNode == null) {
-				tempNode = new Node(currX, currY + 1);
+				tempNode = new Node(new Point(currX, currY + 1));
 				addNode(tempNode, currX, currY + 1);
 			}
 
@@ -421,7 +415,9 @@ public class Hupman extends JPanel{
 
 					//if not in the openList, add it
 					if (!openList.contains(nodeAdj) && !nodeAdj.getVisited()) {
-						int hCost = Math.abs(nodeAdj.getX() - target.getX()) + Math.abs(nodeAdj.getY() - target.getY());
+						Point adjPos = nodeAdj.getPos();
+						Point targetPos = target.getPos();
+						int hCost = Math.abs(adjPos.x - targetPos.x) + Math.abs(adjPos.y - targetPos.y);
 
 						nodeAdj.setParent(thisNode);
 						nodeAdj.setHCost(hCost);
@@ -455,13 +451,62 @@ public class Hupman extends JPanel{
 		return path;
 	}
 
-	public State minimax(State testState, int depth) {
+	private State minimax(State testState, int depth, boolean doMax) {
+		int turn = testState.getTurn();
+
+		if (depth > 0) {
+			Point testPos = null;
+			if (turn == 0) {
+				testPos = testState.getHupmanLocation();
+			} else {
+				testPos = testState.getGhostLocations().get(turn - 1);
+			}
+
+			String key = testPos.x + "-" + testPos.y;
+			Node testNode = mapNodes.get(key);
+			for (int i = 0; i < testNode.getAdjacentNodes().size(); i++) {
+				Node adjNode = testNode.getAdjacentNodes().get(i);
+				State adjState = new State(testState);
+
+				if (turn == 0) {
+					adjState.setHupmanLocation(adjNode.getPos());
+				} else {
+					adjState.setGhostLocation(adjNode.getPos(), turn - 1);
+				}
+
+				//update weights (hupman killed -100, got pellet +10, etc.)
+			}
+		} else {
+
+		}
+
+		//
 
 		return new State();
 	}
 
-	public void takeTurn(State currState) {
-		currState = minimax(currState, 5);
+	private void takeTurn() {
+		boolean doMax = (currentState.getTurn() == 0);
+		currentState = minimax(currentState, 5, doMax);
+
+		//play to new state
+		//e.g., move hupman, move ghosts, kill hupman, remove pellets
+
+		//increment turn
+		int turnNext = currentState.getTurn() + 1;
+		if (turnNext > currentState.getGhostLocations().size()) {
+			turnNext = 0;
+		}
+		currentState.setTurn(turnNext);
+
+		//take next turn
+		try {
+			Thread.sleep(200);
+		}
+		catch (Exception ex) {
+			ex.printStackTrace();
+		}
+		takeTurn();
 	}
 
 	public static void main(String[] args) {
