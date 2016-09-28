@@ -76,6 +76,7 @@ class State {
 	private ArrayList<Point> locAllGhosts = new ArrayList<>();
 	private ArrayList<Point> locAllPellets = new ArrayList<>();
 	private int turnNum = 0;
+	private int weight = 0;
 
 	State() {}
 
@@ -126,6 +127,13 @@ class State {
 	}
 	public int getTurn() {
 		return turnNum;
+	}
+
+	public void setWeight(int newWeight) {
+		weight = newWeight;
+	}
+	public int getWeight() {
+		return weight;
 	}
 }
 
@@ -464,6 +472,8 @@ public class Hupman extends JPanel{
 
 			String key = testPos.x + "-" + testPos.y;
 			Node testNode = mapNodes.get(key);
+
+			ArrayList<State> subStates = new ArrayList<>();
 			for (int i = 0; i < testNode.getAdjacentNodes().size(); i++) {
 				Node adjNode = testNode.getAdjacentNodes().get(i);
 				State adjState = new State(testState);
@@ -475,6 +485,7 @@ public class Hupman extends JPanel{
 				}
 
 				//update weights (hupman killed -100, got pellet +10, etc.)
+				subStates.add(minimax(adjState, depth - 1, !doMax));
 			}
 		} else {
 
