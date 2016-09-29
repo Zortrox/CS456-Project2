@@ -77,6 +77,7 @@ class State {
 	private ArrayList<Point> locAllPellets = new ArrayList<>();
 	private int turnNum = 0;
 	private int weight = 0;
+	private boolean dead = false;
 
 	State() {}
 
@@ -85,6 +86,7 @@ class State {
 		locAllGhosts = new ArrayList<>(oldState.getGhostLocations());
 		locAllPellets = new ArrayList<>(oldState.getPelletLocations());
 		turnNum = oldState.getTurn();
+		dead = oldState.getDead();
 	}
 
 	public void setHupmanLocation(Point newPos) {
@@ -112,7 +114,7 @@ class State {
 	}
 	public void removePellet(Point pelletPoint) {
 		for (int i = 0; i < locAllPellets.size(); i++) {
-			if (locAllPellets.get(i) == pelletPoint) {
+			if (locAllPellets.get(i).equals(pelletPoint)) {
 				locAllPellets.remove(i);
 				i = locAllPellets.size();
 			}
@@ -134,6 +136,13 @@ class State {
 	}
 	public int getWeight() {
 		return weight;
+	}
+
+	public void setDead(boolean isDead) {
+		dead = isDead;
+	}
+	public boolean getDead() {
+		return dead;
 	}
 }
 
@@ -186,6 +195,8 @@ public class Hupman extends JPanel{
 		//set initial pellet positions
 		resetPelletNodes();
 		resetVisitedNodes();
+
+		currentState.setDead(false);
 
 		takeTurn();
 	}
@@ -459,8 +470,29 @@ public class Hupman extends JPanel{
 		return path;
 	}
 
+	private State min(ArrayList<State> arrStates) {
+		State minState = arrStates.get(0);
+		for (int i = 1; i < arrStates.size(); i++) {
+			if (arrStates.get(i).getWeight() < minState.getWeight()) {
+				minState = arrStates.get(i);
+			}
+		}
+		return minState;
+	}
+
+	private State max(ArrayList<State> arrStates) {
+		State maxState = arrStates.get(0);
+		for (int i = 1; i < arrStates.size(); i++) {
+			if (arrStates.get(i).getWeight() > maxState.getWeight()) {
+				maxState = arrStates.get(i);
+			}
+		}
+		return maxState;
+	}
+
 	private State minimax(State testState, int depth, boolean doMax) {
 		int turn = testState.getTurn();
+		State weightState = null;
 
 		if (depth > 0) {
 			Point testPos = null;
@@ -485,23 +517,78 @@ public class Hupman extends JPanel{
 				}
 
 				//update weights (hupman killed -100, got pellet +10, etc.)
+				Point locHupman = adjState.getHupmanLocation();
+				ArrayList<Point> locPellets = adjState.getPelletLocations();
+				for (int j = 0; j < locPellets.size(); j++) {
+					if (locPellets.get(j).equals(locHupman)) {
+						adjState.setWeight(adjState.getWeight() + 10);
+						adjState.removePellet(locPellets.get(j));
+					}
+				}
+				ArrayList<Point> locGhosts = adjState.getGhostLocations();
+				for (int j = 0; j < locGhosts.size(); j++) {
+					if (locGhosts.get(j).equals(locHupman)) {
+						adjState.setWeight(adjState.getWeight() - 100);
+						adjState.setDead(true);
+					}
+				}
+
+				//get weights of all subnodes
 				subStates.add(minimax(adjState, depth - 1, !doMax));
 			}
-		} else {
 
+			if (doMax) weightState = max(subStates);
+			else weightState = min(subStates);
+		} else {
+			weightState = new State(testState);
+
+			int weight = 0;
+			Point locHupman = weightState.getHupmanLocation();
+			Node startNode = mapNodes.get(locHupman.x + "-" + locHupman.y);
+
+			weight -= (10 - depth) * 100;
+
+			ArrayList<Point> locPellets = weightState.getPelletLocations();
+			for (int i = 0; i < locPellets.size(); i++) {
+				Point locPellet = locPellets.get(i);
+				Node endNode = mapNodes.get(locPellet.x + "-" + locPellet.y);
+				ArrayList<Node> path = getPath(startNode, endNode);
+				weight -= Math.sqrt(path.size() / 2);
+
+				if (locPellet.equals(locHupman)) {
+					weight += 50;
+				}
+			}
+			ArrayList<Point> locGhosts = weightState.getGhostLocations();
+			for (int i = 0; i < locGhosts.size(); i++) {
+				Point locGhost = locGhosts.get(i);
+				Node endNode = mapNodes.get(locGhost.x + "-" + locGhost.y);
+				ArrayList<Node> path = getPath(startNode, endNode);
+				weight += Math.sqrt(path.size() / 2);
+
+				if (locGhost.equals(locHupman)) {
+					weight -= 100;
+				}
+			}
+
+			weightState.setWeight(weight);
 		}
 
-		//
-
-		return new State();
+		if (testState == currentState) {
+			return weightState;
+		} else {
+			testState.setWeight(testState.getWeight() + weightState.getWeight());
+			return testState;
+		}
 	}
 
 	private void takeTurn() {
 		boolean doMax = (currentState.getTurn() == 0);
-		currentState = minimax(currentState, 5, doMax);
+		currentState = minimax(currentState, 6, doMax);
 
 		//play to new state
 		//e.g., move hupman, move ghosts, kill hupman, remove pellets
+		paintImmediately(0, 0, windowWidth, windowHeight);
 
 		//increment turn
 		int turnNext = currentState.getTurn() + 1;
@@ -510,14 +597,18 @@ public class Hupman extends JPanel{
 		}
 		currentState.setTurn(turnNext);
 
-		//take next turn
-		try {
-			Thread.sleep(200);
+		//if not dead
+		if (!currentState.getDead()) {
+			//take next turn
+			try {
+				Thread.sleep(50);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+			}
+			takeTurn();
+		} else {
+			System.out.println("Hupman died");
 		}
-		catch (Exception ex) {
-			ex.printStackTrace();
-		}
-		takeTurn();
 	}
 
 	public static void main(String[] args) {
