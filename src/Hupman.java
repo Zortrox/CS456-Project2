@@ -4,12 +4,17 @@
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.*;
-import java.io.*;
-import java.lang.reflect.Array;
-import java.util.*;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 class Node {
 	private ArrayList<Node> adjList = new ArrayList<>();
@@ -76,8 +81,9 @@ class State {
 	private ArrayList<Point> locAllGhosts = new ArrayList<>();
 	private ArrayList<Point> locAllPellets = new ArrayList<>();
 	private int turnNum = 0;
-	private int weight = 0;
+	private float weight = 0;
 	private boolean dead = false;
+	private int uneatenSteps = 0;
 
 	State() {}
 
@@ -87,6 +93,7 @@ class State {
 		locAllPellets = new ArrayList<>(oldState.getPelletLocations());
 		turnNum = oldState.getTurn();
 		dead = oldState.getDead();
+		uneatenSteps = oldState.getUneatenSteps();
 	}
 
 	public void setHupmanLocation(Point newPos) {
@@ -131,10 +138,10 @@ class State {
 		return turnNum;
 	}
 
-	public void setWeight(int newWeight) {
+	public void setWeight(float newWeight) {
 		weight = newWeight;
 	}
-	public int getWeight() {
+	public float getWeight() {
 		return weight;
 	}
 
@@ -143,6 +150,13 @@ class State {
 	}
 	public boolean getDead() {
 		return dead;
+	}
+
+	public void setUneatenSteps(int steps) {
+		uneatenSteps = steps;
+	}
+	public int getUneatenSteps() {
+		return uneatenSteps;
 	}
 }
 
@@ -496,10 +510,10 @@ public class Hupman extends JPanel{
 
 		if (depth > 0) {
 			Point testPos = null;
-			if (turn == 0) {
+			if (doMax) {// || turn == 0) {
 				testPos = testState.getHupmanLocation();
 			} else {
-				testPos = testState.getGhostLocations().get(turn - 1);
+				testPos = testState.getGhostLocations().get(0);//turn - 1);
 			}
 
 			String key = testPos.x + "-" + testPos.y;
@@ -510,11 +524,16 @@ public class Hupman extends JPanel{
 				Node adjNode = testNode.getAdjacentNodes().get(i);
 				State adjState = new State(testState);
 
-				if (turn == 0) {
+				if (doMax) {//turn == 0) {
 					adjState.setHupmanLocation(adjNode.getPos());
 				} else {
-					adjState.setGhostLocation(adjNode.getPos(), turn - 1);
+					adjState.setGhostLocation(adjNode.getPos(), 0);//turn - 1);
 				}
+
+				adjState.setUneatenSteps(adjState.getUneatenSteps() + 1);
+
+				//get weights of all subnodes
+				subStates.add(minimax(adjState, depth - 1, !doMax));
 
 				//update weights (hupman killed -100, got pellet +10, etc.)
 				Point locHupman = adjState.getHupmanLocation();
@@ -522,6 +541,7 @@ public class Hupman extends JPanel{
 				for (int j = 0; j < locPellets.size(); j++) {
 					if (locPellets.get(j).equals(locHupman)) {
 						adjState.setWeight(adjState.getWeight() + 10);
+						adjState.setUneatenSteps(0);
 						adjState.removePellet(locPellets.get(j));
 					}
 				}
@@ -532,28 +552,25 @@ public class Hupman extends JPanel{
 						adjState.setDead(true);
 					}
 				}
-
-				//get weights of all subnodes
-				subStates.add(minimax(adjState, depth - 1, !doMax));
 			}
 
 			if (doMax) weightState = max(subStates);
 			else weightState = min(subStates);
-		} else {
+		}
+		else {
 			weightState = new State(testState);
+			weightState.setUneatenSteps(weightState.getUneatenSteps() + 1);
 
-			int weight = 0;
+			float weight = 0;
 			Point locHupman = weightState.getHupmanLocation();
 			Node startNode = mapNodes.get(locHupman.x + "-" + locHupman.y);
-
-			weight -= (10 - depth) * 100;
 
 			ArrayList<Point> locPellets = weightState.getPelletLocations();
 			for (int i = 0; i < locPellets.size(); i++) {
 				Point locPellet = locPellets.get(i);
 				Node endNode = mapNodes.get(locPellet.x + "-" + locPellet.y);
 				ArrayList<Node> path = getPath(startNode, endNode);
-				weight -= Math.sqrt(path.size() / 2);
+				weight += 10.0 / Math.pow(path.size(), 2);// * weightState.getUneatenSteps();
 
 				if (locPellet.equals(locHupman)) {
 					weight += 50;
@@ -564,7 +581,7 @@ public class Hupman extends JPanel{
 				Point locGhost = locGhosts.get(i);
 				Node endNode = mapNodes.get(locGhost.x + "-" + locGhost.y);
 				ArrayList<Node> path = getPath(startNode, endNode);
-				weight += Math.sqrt(path.size() / 2);
+				weight -= 5.0 / Math.pow(path.size(), 2);
 
 				if (locGhost.equals(locHupman)) {
 					weight -= 100;
@@ -577,14 +594,14 @@ public class Hupman extends JPanel{
 		if (testState == currentState) {
 			return weightState;
 		} else {
-			testState.setWeight(testState.getWeight() + weightState.getWeight());
+			testState.setWeight(weightState.getWeight());
 			return testState;
 		}
 	}
 
 	private void takeTurn() {
 		boolean doMax = (currentState.getTurn() == 0);
-		currentState = minimax(currentState, 6, doMax);
+		currentState = minimax(currentState, 10, doMax);
 
 		//play to new state
 		//e.g., move hupman, move ghosts, kill hupman, remove pellets
