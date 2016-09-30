@@ -83,7 +83,7 @@ class State {
 	private ArrayList<Point> locAllGhosts = new ArrayList<>();
 	private ArrayList<Point> locAllPellets = new ArrayList<>();
 	private int turnNum = 0;
-	private float weight = 0;
+	private double weight = 0;
 	private boolean dead = false;
 	private int uneatenSteps = 0;
 
@@ -146,10 +146,10 @@ class State {
 		return turnNum;
 	}
 
-	public void setWeight(float newWeight) {
+	public void setWeight(double newWeight) {
 		weight = newWeight;
 	}
-	public float getWeight() {
+	public double getWeight() {
 		return weight;
 	}
 
@@ -182,6 +182,12 @@ public class Hupman extends JPanel{
 	private int pelletRadius = gridSize / 5;
 	private int hupmanRadius = gridSize / 3;
 	private State currentState = new State();
+
+	//weight constants
+	private static final int WT_HAS_PELLET 		= 0;
+	private static final int WT_HAS_GHOST 		= 1;
+	private static final int WT_DIST_PELLETS 	= 2;
+	private static final int WT_DIST_GHOSTS 	= 3;
 
 	Hupman() {
 		loadFile();
@@ -498,6 +504,53 @@ public class Hupman extends JPanel{
 		return path;
 	}
 
+	private double getWeight(State testState, int weightType) {
+		double weight = 0;
+
+		Point locHupman = testState.getHupmanLocation();
+
+		if (weightType == WT_HAS_PELLET) {
+			ArrayList<Point> locPellets = testState.getPelletLocations();
+			for (int j = 0; j < locPellets.size(); j++) {
+				if (locPellets.get(j).equals(locHupman)) {
+					weight += 25 * (1.0 / locPellets.size());
+					testState.setUneatenSteps(0);
+					testState.removePellet(locPellets.get(j));
+				}
+			}
+		} else if (weightType == WT_HAS_GHOST) {
+			ArrayList<Point> locGhosts = testState.getGhostLocations();
+			for (int j = 0; j < locGhosts.size(); j++) {
+				if (locGhosts.get(j).equals(locHupman)) {
+					weight -= 500;
+					testState.setDead(true);
+				}
+			}
+		} else if (weightType == WT_DIST_PELLETS) {
+			Node startNode = mapNodes.get(locHupman.x + "-" + locHupman.y);
+			ArrayList<Point> locPellets = testState.getPelletLocations();
+			for (int i = 0; i < locPellets.size(); i++) {
+				Point locPellet = locPellets.get(i);
+				Node endNode = mapNodes.get(locPellet.x + "-" + locPellet.y);
+				ArrayList<Node> path = getPath(startNode, endNode);
+
+				weight += 10.0 / Math.pow(path.size(), 2) * Math.pow(testState.getUneatenSteps(), 1.2)
+						* (1.0 / locPellets.size());
+			}
+		} else if (weightType == WT_DIST_GHOSTS) {
+			Node startNode = mapNodes.get(locHupman.x + "-" + locHupman.y);
+			ArrayList<Point> locGhosts = testState.getGhostLocations();
+			for (int i = 0; i < locGhosts.size(); i++) {
+				Point locGhost = locGhosts.get(i);
+				Node endNode = mapNodes.get(locGhost.x + "-" + locGhost.y);
+				ArrayList<Node> path = getPath(startNode, endNode);
+				weight -= 12.0 / Math.pow(path.size(), 2);
+			}
+		}
+
+		return weight;
+	}
+
 	private State min(ArrayList<State> arrStates, double minProb) {
 		int minIndex = 0;
 		for (int i = 1; i < arrStates.size(); i++) {
@@ -577,23 +630,12 @@ public class Hupman extends JPanel{
 				//get weights of all subnodes
 				subStates.add(minimax(adjState, nextDepth, adjState.getTurn() == 0, minProb));
 
-				//update weights (hupman killed -100, got pellet +10, etc.)
-				Point locHupman = adjState.getHupmanLocation();
-				ArrayList<Point> locPellets = adjState.getPelletLocations();
-				for (int j = 0; j < locPellets.size(); j++) {
-					if (locPellets.get(j).equals(locHupman)) {
-						adjState.setWeight(adjState.getWeight() + 50);
-						adjState.setUneatenSteps(0);
-						adjState.removePellet(locPellets.get(j));
-					}
-				}
-				ArrayList<Point> locGhosts = adjState.getGhostLocations();
-				for (int j = 0; j < locGhosts.size(); j++) {
-					if (locGhosts.get(j).equals(locHupman)) {
-						adjState.setWeight(adjState.getWeight() - 100);
-						adjState.setDead(true);
-					}
-				}
+				//update weights for this node
+				double weight = 0;
+				weight += getWeight(adjState, WT_HAS_PELLET);	//if state has pellet
+				weight += getWeight(adjState, WT_HAS_GHOST);	//if state has ghost
+
+				adjState.setWeight(adjState.getWeight() + weight);
 			}
 
 			if (doMax) weightState = max(subStates);
@@ -607,35 +649,12 @@ public class Hupman extends JPanel{
 			weightState = new State(testState);
 			weightState.setUneatenSteps(weightState.getUneatenSteps() + 1);
 
+			//get weights of final node
 			float weight = 0;
-			Point locHupman = weightState.getHupmanLocation();
-			Node startNode = mapNodes.get(locHupman.x + "-" + locHupman.y);
-
-			weightState.setUneatenSteps(weightState.getUneatenSteps() + 1);
-
-			ArrayList<Point> locPellets = weightState.getPelletLocations();
-			for (int i = 0; i < locPellets.size(); i++) {
-				Point locPellet = locPellets.get(i);
-				Node endNode = mapNodes.get(locPellet.x + "-" + locPellet.y);
-				ArrayList<Node> path = getPath(startNode, endNode);
-				weight += 10.0 / Math.pow(path.size(), 2) * Math.pow(weightState.getUneatenSteps(), 1.2)
-						* (1.0 / locPellets.size());
-
-				if (locPellet.equals(locHupman)) {
-					weight += 25 * (1.0 / locPellets.size());
-				}
-			}
-			ArrayList<Point> locGhosts = weightState.getGhostLocations();
-			for (int i = 0; i < locGhosts.size(); i++) {
-				Point locGhost = locGhosts.get(i);
-				Node endNode = mapNodes.get(locGhost.x + "-" + locGhost.y);
-				ArrayList<Node> path = getPath(startNode, endNode);
-				weight -= 12.0 / Math.pow(path.size(), 2);
-
-				if (locGhost.equals(locHupman)) {
-					weight -= 500;
-				}
-			}
+			weight += getWeight(weightState, WT_HAS_PELLET);	//if state has pellet
+			weight += getWeight(weightState, WT_HAS_GHOST);		//distance to other pellets
+			weight += getWeight(weightState, WT_DIST_PELLETS);	//if state has ghost
+			weight += getWeight(weightState, WT_DIST_GHOSTS);	//distance to other ghosts
 
 			weightState.setWeight(weight);
 		}
@@ -652,8 +671,7 @@ public class Hupman extends JPanel{
 		boolean doMax = (currentState.getTurn() == 0);
 		currentState = minimax(currentState, 5, doMax, 1);
 
-		//play to new state
-		//e.g., move hupman, move ghosts, kill hupman, remove pellets
+		//paint new state
 		paintImmediately(0, 0, windowWidth, windowHeight);
 
 		//if not dead && not won
