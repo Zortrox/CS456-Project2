@@ -236,7 +236,6 @@ public class Hupman extends JPanel{
 		g.setColor(Color.BLUE);
 		g2.setStroke(wall);
 		g2.draw(new Rectangle2D.Float(gridOffset, gridOffset, gridSize * arrMaze[0].length, gridSize * arrMaze.length));
-		//g2.drawRect(gridOffset, gridOffset, gridSize * arrMaze[0].length, gridSize * arrMaze.length);
 		for (int i = 0; i < numRows; i++) {
 			for (int j = 0; j < numCols; j++) {
 				int xPos = j * gridSize + gridOffset;
@@ -425,7 +424,7 @@ public class Hupman extends JPanel{
 	//finds path to target node
 	private ArrayList<Node> getPath(Node start, Node target) {
 		ArrayList<Node> path = new ArrayList<>();
-		ArrayList<Node> openList = new ArrayList<Node>();
+		ArrayList<Node> openList = new ArrayList<>();
 		openList.add(start); //add starting node to open list
 
 		Node thisNode = null;
@@ -499,14 +498,34 @@ public class Hupman extends JPanel{
 		return path;
 	}
 
-	private State min(ArrayList<State> arrStates) {
-		State minState = arrStates.get(0);
+	private State min(ArrayList<State> arrStates, double minProb) {
+		int minIndex = 0;
 		for (int i = 1; i < arrStates.size(); i++) {
-			if (arrStates.get(i).getWeight() < minState.getWeight()) {
-				minState = arrStates.get(i);
+			if (arrStates.get(i).getWeight() < arrStates.get(minIndex).getWeight()) {
+				minIndex = i;
 			}
 		}
-		return minState;
+
+		//randomize the minIndex
+		double rand = Math.random();
+		if (rand >= minProb) {
+			double width = (1.0 - minProb) / (arrStates.size() - 1);
+			for (int i = 0; i < arrStates.size() - 1; i++) {
+				if ((minProb + (i+1) * width) > rand) {
+					//set new state index (taking into account if it's the actual "best")
+					if (minIndex == i) {
+						minIndex = i + 1;
+					} else {
+						minIndex = i;
+					}
+
+					//break the loop
+					i = arrStates.size();
+				}
+			}
+		}
+
+		return arrStates.get(minIndex);
 	}
 
 	private State max(ArrayList<State> arrStates) {
@@ -516,10 +535,11 @@ public class Hupman extends JPanel{
 				maxState = arrStates.get(i);
 			}
 		}
+
 		return maxState;
 	}
 
-	private State minimax(State testState, int depth, boolean doMax) {
+	private State minimax(State testState, int depth, boolean doMax, double minProb) {
 		int turn = testState.getTurn();
 		State weightState = null;
 
@@ -548,8 +568,14 @@ public class Hupman extends JPanel{
 				adjState.setUneatenSteps(adjState.getUneatenSteps() + 1);
 				adjState.nextTurn();
 
+				//decrease depth for hupman turn & ghost turn, but not ALL ghost turns
+				int nextDepth = depth;
+				if (adjState.getTurn() == 0 || adjState.getTurn() == adjState.getGhostLocations().size()) {
+					nextDepth -= 1;
+				}
+
 				//get weights of all subnodes
-				subStates.add(minimax(adjState, depth - 1, adjState.getTurn() == 0));
+				subStates.add(minimax(adjState, nextDepth, adjState.getTurn() == 0, minProb));
 
 				//update weights (hupman killed -100, got pellet +10, etc.)
 				Point locHupman = adjState.getHupmanLocation();
@@ -571,7 +597,11 @@ public class Hupman extends JPanel{
 			}
 
 			if (doMax) weightState = max(subStates);
-			else weightState = min(subStates);
+			else {
+				//hupman always thinks the ghost will choose the best
+				double hupmanProb = (currentState.getTurn() == 0) ? 1.0 : minProb;
+				weightState = min(subStates, hupmanProb);
+			}
 		}
 		else {
 			weightState = new State(testState);
@@ -581,15 +611,18 @@ public class Hupman extends JPanel{
 			Point locHupman = weightState.getHupmanLocation();
 			Node startNode = mapNodes.get(locHupman.x + "-" + locHupman.y);
 
+			weightState.setUneatenSteps(weightState.getUneatenSteps() + 1);
+
 			ArrayList<Point> locPellets = weightState.getPelletLocations();
 			for (int i = 0; i < locPellets.size(); i++) {
 				Point locPellet = locPellets.get(i);
 				Node endNode = mapNodes.get(locPellet.x + "-" + locPellet.y);
 				ArrayList<Node> path = getPath(startNode, endNode);
-				weight += 10.0 / Math.pow(path.size(), 2);// * weightState.getUneatenSteps();
+				weight += 10.0 / Math.pow(path.size(), 2) * Math.pow(weightState.getUneatenSteps(), 1.2)
+						* (1.0 / locPellets.size());
 
 				if (locPellet.equals(locHupman)) {
-					weight += 50;
+					weight += 25 * (1.0 / locPellets.size());
 				}
 			}
 			ArrayList<Point> locGhosts = weightState.getGhostLocations();
@@ -597,10 +630,10 @@ public class Hupman extends JPanel{
 				Point locGhost = locGhosts.get(i);
 				Node endNode = mapNodes.get(locGhost.x + "-" + locGhost.y);
 				ArrayList<Node> path = getPath(startNode, endNode);
-				weight -= 5.0 / Math.pow(path.size(), 2);
+				weight -= 12.0 / Math.pow(path.size(), 2);
 
 				if (locGhost.equals(locHupman)) {
-					weight -= 100;
+					weight -= 500;
 				}
 			}
 
@@ -617,17 +650,15 @@ public class Hupman extends JPanel{
 
 	private void takeTurn() {
 		boolean doMax = (currentState.getTurn() == 0);
-		currentState = minimax(currentState, 5, doMax);
+		currentState = minimax(currentState, 5, doMax, 1);
 
 		//play to new state
 		//e.g., move hupman, move ghosts, kill hupman, remove pellets
 		paintImmediately(0, 0, windowWidth, windowHeight);
 
-		//increment turn
-		//currentState.nextTurn();
-
-		//if not dead
-		if (!currentState.getDead()) {
+		//if not dead && not won
+		int pelletsLeft = currentState.getPelletLocations().size();
+		if (!currentState.getDead() && pelletsLeft > 0) {
 			//take next turn
 			try {
 				Thread.sleep(100);
@@ -635,8 +666,10 @@ public class Hupman extends JPanel{
 				ex.printStackTrace();
 			}
 			takeTurn();
+		} else if (pelletsLeft == 0) {
+			System.out.println("Hupman won!");
 		} else {
-			System.out.println("Hupman died");
+			System.out.println("Hupman died!");
 		}
 	}
 
