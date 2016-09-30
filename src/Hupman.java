@@ -8,6 +8,8 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.geom.Line2D;
+import java.awt.geom.Rectangle2D;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
@@ -131,6 +133,12 @@ class State {
 		return locAllPellets;
 	}
 
+	public void nextTurn() {
+		turnNum++;
+		if (turnNum > locAllGhosts.size()) {
+			turnNum = 0;
+		}
+	}
 	public void setTurn(int newTurn) {
 		turnNum = newTurn;
 	}
@@ -218,26 +226,33 @@ public class Hupman extends JPanel{
 	public void paintComponent(Graphics g) {
 		super.paintComponent(g);
 
-		//g2.clearRect(0, 0, windowWidth, windowHeight);
+		Graphics2D g2 = (Graphics2D) g;
 
 		g.setColor(Color.BLACK);
-		g.drawRect(gridOffset, gridOffset, gridSize * arrMaze[0].length, gridSize * arrMaze.length);
+		g.fillRect(0, 0, windowWidth, windowHeight);
+
+		BasicStroke wall = new BasicStroke(3.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
+
+		g.setColor(Color.BLUE);
+		g2.setStroke(wall);
+		g2.draw(new Rectangle2D.Float(gridOffset, gridOffset, gridSize * arrMaze[0].length, gridSize * arrMaze.length));
+		//g2.drawRect(gridOffset, gridOffset, gridSize * arrMaze[0].length, gridSize * arrMaze.length);
 		for (int i = 0; i < numRows; i++) {
 			for (int j = 0; j < numCols; j++) {
 				int xPos = j * gridSize + gridOffset;
 				int yPos = i * gridSize + gridOffset;
 				if (arrMaze[i][j] == 1 || arrMaze[i][j] == 3) {
-					g.drawLine(xPos, yPos, xPos + gridSize, yPos);
+					g2.draw(new Line2D.Float(xPos, yPos, xPos + gridSize, yPos));
 				}
 				if (arrMaze[i][j] == 2 || arrMaze[i][j] == 3) {
-					g.drawLine(xPos + gridSize, yPos, xPos + gridSize, yPos + gridSize);
+					g2.draw(new Line2D.Float(xPos + gridSize, yPos, xPos + gridSize, yPos + gridSize));
 				}
 			}
 		}
 
 		ArrayList<Point> locAllPellets = currentState.getPelletLocations();
 		if (locAllPellets.size() > 0) {
-			g.setColor(Color.red);
+			g.setColor(Color.WHITE);
 			for (int i = 0; i < locAllPellets.size(); i++) {
 				int xPos = (int)locAllPellets.get(i).getX() * gridSize + gridSize / 2 - pelletRadius + gridOffset;
 				int yPos = (int)locAllPellets.get(i).getY() * gridSize + gridSize / 2 - pelletRadius + gridOffset;
@@ -247,7 +262,7 @@ public class Hupman extends JPanel{
 
 		Point locHupman = currentState.getHupmanLocation();
 		if (locHupman != null) {
-			g.setColor(Color.orange);
+			g.setColor(Color.YELLOW);
 			int xPos = (int)locHupman.getX() * gridSize + gridSize / 2 - hupmanRadius + gridOffset;
 			int yPos = (int)locHupman.getY() * gridSize + gridSize / 2 - hupmanRadius + gridOffset;
 			g.fillOval(xPos, yPos, hupmanRadius * 2, hupmanRadius * 2);
@@ -255,7 +270,7 @@ public class Hupman extends JPanel{
 
 		ArrayList<Point> locAllGhosts = currentState.getGhostLocations();
 		if (locAllGhosts.size() > 0) {
-			g.setColor(Color.blue);
+			g.setColor(Color.RED);
 			for (int i = 0; i < locAllGhosts.size(); i++) {
 				int xPos = (int)locAllGhosts.get(i).getX() * gridSize + gridSize / 2 - hupmanRadius + gridOffset;
 				int yPos = (int)locAllGhosts.get(i).getY() * gridSize + gridSize / 2 - hupmanRadius + gridOffset;
@@ -510,10 +525,10 @@ public class Hupman extends JPanel{
 
 		if (depth > 0) {
 			Point testPos = null;
-			if (doMax) {// || turn == 0) {
+			if (doMax) {
 				testPos = testState.getHupmanLocation();
 			} else {
-				testPos = testState.getGhostLocations().get(0);//turn - 1);
+				testPos = testState.getGhostLocations().get(turn - 1);
 			}
 
 			String key = testPos.x + "-" + testPos.y;
@@ -527,20 +542,21 @@ public class Hupman extends JPanel{
 				if (doMax) {//turn == 0) {
 					adjState.setHupmanLocation(adjNode.getPos());
 				} else {
-					adjState.setGhostLocation(adjNode.getPos(), 0);//turn - 1);
+					adjState.setGhostLocation(adjNode.getPos(), turn - 1);
 				}
 
 				adjState.setUneatenSteps(adjState.getUneatenSteps() + 1);
+				adjState.nextTurn();
 
 				//get weights of all subnodes
-				subStates.add(minimax(adjState, depth - 1, !doMax));
+				subStates.add(minimax(adjState, depth - 1, adjState.getTurn() == 0));
 
 				//update weights (hupman killed -100, got pellet +10, etc.)
 				Point locHupman = adjState.getHupmanLocation();
 				ArrayList<Point> locPellets = adjState.getPelletLocations();
 				for (int j = 0; j < locPellets.size(); j++) {
 					if (locPellets.get(j).equals(locHupman)) {
-						adjState.setWeight(adjState.getWeight() + 10);
+						adjState.setWeight(adjState.getWeight() + 50);
 						adjState.setUneatenSteps(0);
 						adjState.removePellet(locPellets.get(j));
 					}
@@ -601,24 +617,20 @@ public class Hupman extends JPanel{
 
 	private void takeTurn() {
 		boolean doMax = (currentState.getTurn() == 0);
-		currentState = minimax(currentState, 10, doMax);
+		currentState = minimax(currentState, 5, doMax);
 
 		//play to new state
 		//e.g., move hupman, move ghosts, kill hupman, remove pellets
 		paintImmediately(0, 0, windowWidth, windowHeight);
 
 		//increment turn
-		int turnNext = currentState.getTurn() + 1;
-		if (turnNext > currentState.getGhostLocations().size()) {
-			turnNext = 0;
-		}
-		currentState.setTurn(turnNext);
+		//currentState.nextTurn();
 
 		//if not dead
 		if (!currentState.getDead()) {
 			//take next turn
 			try {
-				Thread.sleep(50);
+				Thread.sleep(100);
 			} catch (Exception ex) {
 				ex.printStackTrace();
 			}
