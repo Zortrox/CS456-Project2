@@ -282,6 +282,7 @@ public class Hupman extends JPanel{
 			currentState.setDead(false);
 			currentState.setUneatenSteps(0);
 			currentState.resetSteps();
+			currentState.setWeight(0);
 
 			Object[] options = {"Function 1",
 					"Function 2"};
