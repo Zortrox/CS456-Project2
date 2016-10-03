@@ -295,8 +295,9 @@ public class Hupman extends JPanel{
 				public void run() {
 					State testState = new State();
 					double ghostChance = 1.0;
+					int depth = 10;
 					int pelletsLeft = currentState.getPelletLocations().size();
-					while ((testState = takeTurn(currentState, func, ghostChance)) != null &&
+					while ((testState = takeTurn(currentState, depth, func, ghostChance)) != null &&
 							(pelletsLeft = currentState.getPelletLocations().size()) != 0) {
 						//set the current state to this state
 						currentState = testState;
@@ -855,13 +856,13 @@ public class Hupman extends JPanel{
 	//hupman has the "best" chance for a better score.
 	//"func" is the evaluation function to use (0 or 1)
 	//"ghostChance" is the chance of the ghosts using the "best" move
-	private State takeTurn(State thisState, int func, double ghostChance) {
+	private State takeTurn(State thisState, int depth, int func, double ghostChance) {
 		//whether to maximize or minimize the
 		boolean doMax = (currentState.getTurn() == 0);
 
 		//get next hupman/ghost states
 		State testState = new State(currentState);
-		testState = minimax(currentState, 5, doMax, ghostChance, func + 1);
+		testState = minimax(currentState, depth, doMax, ghostChance, func + 1);
 
 		//return null is the game has ended (dead or eaten all pellets)
 		if (testState.getDead()) {
