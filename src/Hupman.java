@@ -294,8 +294,8 @@ public class Hupman extends JPanel{
 				@Override
 				public void run() {
 					State testState = new State();
-					double ghostChance = 1.0;
-					int depth = 10;
+					double ghostChance = 0.7;
+					int depth = 3;
 					int pelletsLeft = currentState.getPelletLocations().size();
 					while ((testState = takeTurn(currentState, depth, func, ghostChance)) != null &&
 							(pelletsLeft = currentState.getPelletLocations().size()) != 0) {
@@ -783,15 +783,9 @@ public class Hupman extends JPanel{
 					adjState.setGhostLocation(adjNode.getPos(), turn - 1);
 				}
 
-				//decrease depth for hupman turn & ghost turn, but not ALL ghost turns
-				int nextDepth = depth;
-				if (turn == 0 || turn == 1) {
-					nextDepth -= 1;
-				}
-
 				//make the next state another player's turn & get weights of all their subnodes
 				adjState.nextTurn();
-				subStates.add(minimax(adjState, nextDepth, adjState.getTurn() == 0, minProb, evalFunction));
+				subStates.add(minimax(adjState, depth - 1, adjState.getTurn() == 0, minProb, evalFunction));
 
 				//update weights for this node
 				double weight = 0;
@@ -854,6 +848,7 @@ public class Hupman extends JPanel{
 	//SUCCESSOR FUNCTION
 	//this function takes the current state and applies minimax to it, which returns the state at which
 	//hupman has the "best" chance for a better score.
+	//returns null if hupman is dead
 	//"func" is the evaluation function to use (0 or 1)
 	//"ghostChance" is the chance of the ghosts using the "best" move
 	private State takeTurn(State thisState, int depth, int func, double ghostChance) {
